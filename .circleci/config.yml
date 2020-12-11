@@ -6,7 +6,7 @@ commands:
       - run:
           name: Init Dir
           command: |
-            mkdir -p ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci
+            mkdir -p ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
             sudo chown -R circleci ~/go
             mkdir -p ~/go/out/tests
             mkdir -p ~/go/out/logs
