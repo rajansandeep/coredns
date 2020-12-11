@@ -47,20 +47,20 @@ jobs:
     parameters:
       k8s-version:
         type: string
-      environment:
-        - K8S_VERSION: <<parameters.k8s-version>>
-      executor:
-        name: default-executor
+    environment:
+      - K8S_VERSION: <<parameters.k8s-version>>
+    executor:
+      name: default-executor
     steps:
-      - initWorkingDir
+      - initworkingdir
       - checkout
       - run:
           name: Get CI repo
           command : |
             mkdir -p ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci
             git clone https://github.com/${CIRCLE_PROJECT_USERNAME}/ci ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci
-      - setupKubernetes
-      - buildCoreDNSImage
+      - setupkubernetes
+      - buildcorednsimage
       - run:
           name: Run Kubernetes tests
           command: |
