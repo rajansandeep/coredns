@@ -1,57 +1,66 @@
-version: 2
+version: 2.1
 
-initWorkingDir: &initWorkingDir
-  type: shell
-  name: Initialize Working Directory
-  pwd: /
-  command: |
-    mkdir -p ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
-    sudo chown -R circleci ~/go
-    mkdir -p ~/go/out/tests
-    mkdir -p ~/go/out/logs
-    mkdir -p /home/circleci/logs
-    GOROOT=$(go env GOROOT)
-    sudo rm -r $(go env GOROOT)
-    sudo mkdir $GOROOT
-    LATEST=$(curl -s https://golang.org/VERSION?m=text)
-    curl https://dl.google.com/go/${LATEST}.linux-amd64.tar.gz | sudo tar xz -C $GOROOT --strip-components=1
+commands:
+  initworkingdir:
+    steps:
+      - run:
+          name: Init Dir
+          command: |
+            mkdir -p ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
+            sudo chown -R circleci ~/go
+            mkdir -p ~/go/out/tests
+            mkdir -p ~/go/out/logs
+            mkdir -p /home/circleci/logs
+            GOROOT=$(go env GOROOT)
+            sudo rm -r $(go env GOROOT)
+            sudo mkdir $GOROOT
+            LATEST=$(curl -s https://golang.org/VERSION?m=text)
+            curl https://dl.google.com/go/${LATEST}.linux-amd64.tar.gz | sudo tar xz -C $GOROOT --strip-components=1
 
-integrationDefaults: &integrationDefaults
-  machine:
-    image: ubuntu-1604:201903-01
-  working_directory: ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
-  environment:
-    - K8S_VERSION: v1.19.1
-    - KIND_VERSION: v0.9.0
-    - KUBECONFIG: /home/circleci/.kube/kind-config-kind
+  setupkubernetes:
+    steps:
+      - run:
+          name: Setup Kubernetes
+          command: ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci/build/kubernetes/k8s_setup.sh
 
-setupKubernetes: &setupKubernetes
-  - run:
-      name: Setup Kubernetes
-      command: ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci/build/kubernetes/k8s_setup.sh
+  buildcorednsimage:
+    steps:
+      - run:
+          name: Build latest CoreDNS Docker image
+          command: |
+            cd ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
+            make coredns SYSTEM="GOOS=linux" && \
+            docker build -t coredns . && \
+            kind load docker-image coredns
 
-buildCoreDNSImage: &buildCoreDNSImage
-  - run:
-      name: Build latest CoreDNS Docker image
-      command: |
-        cd ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
-        make coredns SYSTEM="GOOS=linux" && \
-        docker build -t coredns . && \
-        kind load docker-image coredns
+executors:
+  default-executor:
+    machine:
+      image: ubuntu-1604:201903-01
+    working_directory: ~/go/src/${CIRCLE_PROJECT_USERNAME}/coredns
+    environment:
+      - KIND_VERSION: v0.9.0
+      - KUBECONFIG: /home/circleci/.kube/kind-config-kind
 
 jobs:
   kubernetes-tests:
-    <<: *integrationDefaults
+    parameters:
+      k8s-version:
+        type: string
+    environment:
+      - K8S_VERSION: <<parameters.k8s-version>>
+    executor:
+      name: default-executor
     steps:
-      - <<: *initWorkingDir
+      - initworkingdir
       - checkout
       - run:
           name: Get CI repo
           command : |
             mkdir -p ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci
             git clone https://github.com/${CIRCLE_PROJECT_USERNAME}/ci ~/go/src/${CIRCLE_PROJECT_USERNAME}/ci
-      - <<: *setupKubernetes
-      - <<: *buildCoreDNSImage
+      - setupkubernetes
+      - buildcorednsimage
       - run:
           name: Run Kubernetes tests
           command: |
@@ -60,7 +69,9 @@ jobs:
             go test -v ./...
 
 workflows:
-  version: 2
   integration-tests:
     jobs:
-      - kubernetes-tests
+      - kubernetes-tests:
+          matrix:
+            parameters:
+              k8s-version: [ "v1.19.1", "v1.18.8", "v1.17.11" ]
